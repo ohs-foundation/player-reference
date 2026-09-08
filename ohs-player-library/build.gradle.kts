@@ -16,14 +16,13 @@
 @file:OptIn(ExperimentalKotlinGradlePluginApi::class)
 
 import java.util.Properties
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
   alias(libs.plugins.kotlinMultiplatform)
-  alias(libs.plugins.androidApplication)
+  alias(libs.plugins.androidKotlinMultiplatformLibrary)
   alias(libs.plugins.composeMultiplatform)
   alias(libs.plugins.composeCompiler)
   alias(libs.plugins.composeHotReload)
@@ -33,6 +32,8 @@ plugins {
 }
 
 kotlin {
+  jvmToolchain(21)
+
   // Desktop, js and wasmJs lack a native OS background scheduler, so they share a "foregroundSync"
   // source set (see `foregroundSyncMain/.../data/sync/Sync.kt`) letting one coroutine-based
   // scheduler serve all three instead of a separate implementation per platform. js and wasmJs
@@ -52,8 +53,13 @@ kotlin {
 
   // fhir-engine's Android artifact ships inline functions (e.g. Sync.oneTimeSync) compiled at JVM
   // target 21 — inlining them requires this target to be at least as high.
-  androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }
-
+  androidLibrary {
+    namespace = "dev.ohs.player.library"
+    compileSdk = libs.versions.android.compileSdk.get().toInt()
+    minSdk = libs.versions.android.minSdk.get().toInt()
+    compilerOptions { jvmTarget.set(JvmTarget.JVM_21) }
+    androidResources { enable = true }
+  }
   listOf(iosArm64(), iosSimulatorArm64()).forEach { iosTarget ->
     iosTarget.binaries.framework {
       baseName = "OhsPlayerReferenceApp"
@@ -61,7 +67,7 @@ kotlin {
     }
   }
 
-  jvm()
+  jvm { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }
 
   js {
     browser()
@@ -78,13 +84,6 @@ kotlin {
   compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
 
   sourceSets {
-    androidMain.dependencies {
-      implementation(libs.compose.uiToolingPreview)
-      implementation(libs.androidx.activity.compose)
-      implementation(libs.ktor.client.okhttp)
-      implementation(libs.androidx.browser)
-      implementation(libs.androidx.work.runtime)
-    }
     commonMain.dependencies {
       implementation(libs.ohs.player.client)
       implementation(libs.compose.runtime)
@@ -128,6 +127,10 @@ kotlin {
       implementation(libs.ktor.client.mock)
     }
     iosMain.dependencies { implementation(libs.ktor.client.darwin) }
+    androidMain.dependencies {
+      implementation(libs.androidx.browser)
+      implementation(libs.androidx.work.runtime)
+    }
     getByName("foregroundSyncWebMain").dependencies { implementation(libs.kotlinx.browser) }
     webMain.dependencies {
       // :engine's WebWorkerSQLiteDriver worker (androidx.sqlite:sqlite-web) is loaded via
@@ -157,52 +160,7 @@ kotlin {
   }
 }
 
-// Release signing inputs: env vars first (CI), then keystore.properties as a
-// dev-time fallback. Read via the providers API so the config cache tracks them.
-val keystoreProperties: Map<String, String> =
-  providers
-    .fileContents(rootProject.layout.projectDirectory.file("keystore.properties"))
-    .asText
-    .map { text ->
-      val props = Properties().apply { load(text.reader()) }
-      props.stringPropertyNames().associateWith(props::getProperty)
-    }
-    .getOrElse(emptyMap())
-
-/*
- * Reads an environment variable, but yields a value only when it is non-blank.
- * Blank or whitespace-only vars are treated as absent, leaving the provider
- * empty so downstream `.getOrElse(...)` / `.orNull` fallbacks take over. This
- * stops an accidentally exported-but-empty var (e.g. `VERSION_NAME=`) from
- * slipping past those fallbacks.
- */
-fun nonBlankEnv(name: String): Provider<String> =
-  providers.environmentVariable(name).filter { it.isNotBlank() }
-
-fun envOrKeystore(envName: String, fileKey: String): String? =
-  nonBlankEnv(envName).orNull ?: keystoreProperties[fileKey]?.takeIf { it.isNotBlank() }
-
-// "0.0.0-dev" flags accidental dev builds and prevents silent "1.0" CI fallbacks if the version is
-// unspecified
-
-val releaseVersionName: String =
-  nonBlankEnv("VERSION_NAME").map { it.removePrefix("v") }.getOrElse("0.0.0-dev")
-
-val releaseVersionCode: Int =
-  nonBlankEnv("VERSION_CODE")
-    .map { raw -> raw.toIntOrNull() ?: error("VERSION_CODE='$raw' must be an integer") }
-    .getOrElse(1)
-
-val keystorePath = envOrKeystore("ANDROID_KEYSTORE_PATH", "KEYSTORE_PATH")
-val keystoreAlias = envOrKeystore("ANDROID_KEY_ALIAS", "KEY_ALIAS")
-val keystoreKeyPassword = envOrKeystore("ANDROID_KEY_PASSWORD", "KEY_PASSWORD")
-val keystoreStorePassword = envOrKeystore("ANDROID_STORE_PASSWORD", "STORE_PASSWORD")
-
-val hasReleaseSigning: Boolean =
-  !keystorePath.isNullOrBlank() &&
-    !keystoreAlias.isNullOrBlank() &&
-    !keystoreKeyPassword.isNullOrBlank() &&
-    !keystoreStorePassword.isNullOrBlank()
+compose.resources { packageOfResClass = "player_reference.reference_app.generated.resources" }
 
 // --- OAuth / OIDC config ------------------------------------------------------
 // Provider-agnostic: the app resolves endpoints via OIDC discovery
@@ -220,6 +178,16 @@ val localProperties: Map<String, String> =
       props.stringPropertyNames().associateWith(props::getProperty)
     }
     .getOrElse(emptyMap())
+
+/*
+ * Reads an environment variable, but yields a value only when it is non-blank.
+ * Blank or whitespace-only vars are treated as absent, leaving the provider
+ * empty so downstream `.getOrElse(...)` / `.orNull` fallbacks take over. This
+ * stops an accidentally exported-but-empty var (e.g. `VERSION_NAME=`) from
+ * slipping past those fallbacks.
+ */
+fun nonBlankEnv(name: String): Provider<String> =
+  providers.environmentVariable(name).filter { it.isNotBlank() }
 
 val authConfigOutputDir = layout.buildDirectory.dir("generated/authconfig/commonMain/kotlin")
 
@@ -254,7 +222,7 @@ val generateAuthConfig =
         .resolve("GeneratedAuthConfig.kt")
         .writeText(
           """
-        |// Generated by the :ohs-player-reference-app generateAuthConfig task. Do not edit.
+        |// Generated by the :ohs-player-library generateAuthConfig task. Do not edit.
         |// Values come from local.properties / env vars; see local.properties.sample.
         |package dev.ohs.player.reference.app.auth
         |
@@ -276,7 +244,7 @@ val generateAuthConfig =
         .resolve("GeneratedAppInfo.kt")
         .writeText(
           """
-        |// Generated by the :ohs-player-reference-app generateAuthConfig task. Do not edit.
+        |// Generated by the :ohs-player-library generateAuthConfig task. Do not edit.
         |package dev.ohs.player.reference.app.auth
         |
         |internal object GeneratedAppInfo {
@@ -296,77 +264,32 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().con
   dependsOn(generateAuthConfig)
 }
 
-android {
-  namespace = "dev.ohs.player.reference.app"
-  compileSdk = libs.versions.android.compileSdk.get().toInt()
-
-  defaultConfig {
-    applicationId = "dev.ohs.player.reference.app"
-    minSdk = libs.versions.android.minSdk.get().toInt()
-    targetSdk = libs.versions.android.targetSdk.get().toInt()
-    versionCode = releaseVersionCode
-    versionName = releaseVersionName
-  }
-  packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
-  signingConfigs {
-    if (hasReleaseSigning) {
-      create("release") {
-        // Disables legacy V1 JAR signing to rely entirely on V2+ signatures required by Android
-        // 7.0+.
-
-        enableV1Signing = false
-        enableV2Signing = true
-        storeFile = file(keystorePath!!)
-        keyAlias = keystoreAlias
-        keyPassword = keystoreKeyPassword
-        storePassword = keystoreStorePassword
-      }
+// Release version info (used by generateAuthConfig)
+val keystoreProperties: Map<String, String> =
+  providers
+    .fileContents(rootProject.layout.projectDirectory.file("keystore.properties"))
+    .asText
+    .map { text ->
+      val props = Properties().apply { load(text.reader()) }
+      props.stringPropertyNames().associateWith(props::getProperty)
     }
-  }
-  buildTypes {
-    getByName("release") {
-      isMinifyEnabled = false
-      if (hasReleaseSigning) {
-        signingConfig = signingConfigs.getByName("release")
-      }
-    }
-  }
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
-  }
-}
+    .getOrElse(emptyMap())
+
+fun envOrKeystore(envName: String, fileKey: String): String? =
+  nonBlankEnv(envName).orNull ?: keystoreProperties[fileKey]?.takeIf { it.isNotBlank() }
+
+val releaseVersionName: String =
+  nonBlankEnv("VERSION_NAME").map { it.removePrefix("v") }.getOrElse("0.0.0-dev")
+
+val releaseVersionCode: Int =
+  nonBlankEnv("VERSION_CODE")
+    .map { raw -> raw.toIntOrNull() ?: error("VERSION_CODE='$raw' must be an integer") }
+    .getOrElse(1)
 
 igCodegen {
   // sourcesDir defaults to src/commonMain/composeResources/files
   packageName = "dev.ohs.player.generated"
 }
-
-dependencies { debugImplementation(libs.compose.uiTooling) }
-
-/*
- * Desktop installer version. WiX/MSI (and jpackage) require a strict numeric
- * MAJOR.MINOR.PATCH, so any Semantic Version pre-release suffix is stripped here. Android's
- * versionName keeps the full string; this drift between platforms is intentional.
- *
- * Example — VERSION_NAME=v1.2.3-alpha.1:
- *   before (raw input)          v1.2.3-alpha.1
- *   Android versionName         1.2.3-alpha.1   (prefix dropped, suffix kept)
- *   Desktop packageVersion      1.2.3           (prefix + suffix stripped)
- *
- * A plain release (VERSION_NAME=v1.2.3) yields 1.2.3 on both platforms.
- */
-val composePackageVersion: String =
-  nonBlankEnv("VERSION_NAME")
-    .map { raw ->
-      val numeric = raw.removePrefix("v").substringBefore('-')
-      if (numeric.matches(Regex("""\d+\.\d+\.\d+"""))) {
-        numeric
-      } else {
-        error("VERSION_NAME='$raw' is not MAJOR.MINOR.PATCH; cannot derive jpackage packageVersion")
-      }
-    }
-    .getOrElse("1.0.0")
 
 // Targets skipped on CI until their test setups are sorted out. Only disabled when CI=true (set by
 // GitHub Actions) so the CI build stays green; local development still runs these so contributors
@@ -388,8 +311,6 @@ if (isCi) {
     .matching {
       it.name in
         setOf(
-          "testDebugUnitTest",
-          "testReleaseUnitTest",
           "compileTestDevelopmentExecutableKotlinJs",
           "compileTestProductionExecutableKotlinJs",
           "jsBrowserTest",
@@ -397,21 +318,4 @@ if (isCi) {
         )
     }
     .configureEach { enabled = false }
-}
-
-compose.desktop {
-  application {
-    mainClass = "dev.ohs.player.reference.app.MainKt"
-
-    nativeDistributions {
-      targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
-      packageName = "PlayerReference"
-      packageVersion = composePackageVersion
-
-      val iconsDir = project.layout.projectDirectory.dir("desktop-icons")
-      macOS { iconFile.set(iconsDir.file("app-icon.icns")) }
-      windows { iconFile.set(iconsDir.file("app-icon.ico")) }
-      linux { iconFile.set(iconsDir.file("app-icon.png")) }
-    }
-  }
 }

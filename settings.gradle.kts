@@ -18,10 +18,11 @@ rootProject.name = "player-reference"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 // Standalone build that provides the dev.ohs.ig-codegen plugin.
+includeBuild("build-logic")
+
 includeBuild("ig-codegen")
 
 pluginManagement {
-  includeBuild("build-logic")
   repositories {
     google {
       mavenContent {
@@ -52,4 +53,10 @@ dependencyResolutionManagement {
 
 plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
 
-include(":reference-app")
+include(":ohs-player-library")
+
+include(":androidApp")
+
+include(":desktopApp")
+
+include(":webApp")
