@@ -221,18 +221,36 @@ val localProperties: Map<String, String> =
     }
     .getOrElse(emptyMap())
 
+/*
+ * Resolved once at configuration time. `generateAuthConfig` bakes these into
+ * GeneratedAuthConfig, and the redirect scheme/host additionally drive the Android
+ * manifest placeholders below, so the LoginRedirectActivity intent-filter cannot
+ * drift from the config the app actually authenticates with.
+ */
+val resolvedIssuer = authProp("OAUTH_ISSUER", "https://keycloak.example.org/realms/ohs-player")
+val resolvedClientId = authProp("OAUTH_CLIENT_ID", "ohs-player-reference-app")
+val resolvedRedirectScheme = authProp("OAUTH_REDIRECT_SCHEME", "dev.ohs.player.reference.app")
+val resolvedRedirectHost = authProp("OAUTH_REDIRECT_HOST", "auth")
+val resolvedWebRedirectUrl = authProp("OAUTH_WEB_REDIRECT_URL", "http://localhost:8080/callback")
+val resolvedDesktopPort = authProp("OAUTH_DESKTOP_REDIRECT_PORT", "8765")
+val resolvedScopes = authProp("OAUTH_SCOPES", "openid profile email offline_access")
+val resolvedFhirBaseUrl = authProp("FHIR_BASE_URL", "https://hapi.fhir.org/baseR4")
+
 val authConfigOutputDir = layout.buildDirectory.dir("generated/authconfig/commonMain/kotlin")
 
 val generateAuthConfig =
   tasks.register("generateAuthConfig") {
-    val issuer = authProp("OAUTH_ISSUER", "https://keycloak.example.org/realms/ohs-player")
-    val clientId = authProp("OAUTH_CLIENT_ID", "ohs-player-reference-app")
-    val redirectScheme = authProp("OAUTH_REDIRECT_SCHEME", "dev.ohs.player.reference.app")
-    val redirectHost = authProp("OAUTH_REDIRECT_HOST", "auth")
-    val webRedirectUrl = authProp("OAUTH_WEB_REDIRECT_URL", "http://localhost:8080/callback")
-    val desktopPort = authProp("OAUTH_DESKTOP_REDIRECT_PORT", "8765")
-    val scopes = authProp("OAUTH_SCOPES", "openid profile email offline_access")
-    val fhirBaseUrl = authProp("FHIR_BASE_URL", "https://hapi.fhir.org/baseR4")
+    // Copied into locals so the doLast lambda below closes over plain Strings.
+    // Reading a script-level `val` from inside doLast captures a Gradle script
+    // object reference, which the configuration cache cannot serialize.
+    val issuer = resolvedIssuer
+    val clientId = resolvedClientId
+    val redirectScheme = resolvedRedirectScheme
+    val redirectHost = resolvedRedirectHost
+    val webRedirectUrl = resolvedWebRedirectUrl
+    val desktopPort = resolvedDesktopPort
+    val scopes = resolvedScopes
+    val fhirBaseUrl = resolvedFhirBaseUrl
     val versionName = releaseVersionName
     val versionCode = releaseVersionCode
     val outDir = authConfigOutputDir
@@ -306,6 +324,10 @@ android {
     targetSdk = libs.versions.android.targetSdk.get().toInt()
     versionCode = releaseVersionCode
     versionName = releaseVersionName
+    // Substituted into the LoginRedirectActivity intent-filter in AndroidManifest.xml,
+    // from the same values generateAuthConfig bakes into GeneratedAuthConfig.
+    manifestPlaceholders["oauthRedirectScheme"] = resolvedRedirectScheme
+    manifestPlaceholders["oauthRedirectHost"] = resolvedRedirectHost
   }
   packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
   signingConfigs {

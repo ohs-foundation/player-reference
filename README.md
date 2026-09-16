@@ -88,7 +88,7 @@ Each platform uses its idiomatic flow: Chrome Custom Tabs on Android, `ASWebAuth
 
 Two things to know:
 
-- **Changing the scheme or host means editing [`AndroidManifest.xml`](./reference-app/src/androidMain/AndroidManifest.xml) too** — the `LoginRedirectActivity` intent-filter hardcodes the pair.
+- **The Android intent-filter tracks these automatically** — the build injects `OAUTH_REDIRECT_SCHEME` / `OAUTH_REDIRECT_HOST` into [`AndroidManifest.xml`](./reference-app/src/androidMain/AndroidManifest.xml) as manifest placeholders, so the `LoginRedirectActivity` deep link cannot drift from the generated config. Changing them still means registering the new redirect URI at your provider.
 - Android Studio writes `sdk.dir` into the same `local.properties`. Keep it; Android and `allTests` builds need it.
 
 ### Keycloak example
@@ -338,6 +338,23 @@ Click **Use this template → Create a new repository** on GitHub, then work thr
 [`ci.yml`](./.github/workflows/ci.yml) validates every pull request and push to `main`: spotless formatting, `jvmTest`, Android `lintDebug`, and an iOS compile-and-link on macOS runners for `iosArm64` and `iosSimulatorArm64`.
 
 Pushing a semantic version tag (`vX.Y.Z` or `vX.Y.Z-suffix`) triggers [`release.yml`](./.github/workflows/release.yml), which builds and signs every platform and publishes a GitHub Release with checksummed artifacts: an Android APK, desktop installers (`.deb`, `.rpm`, `.msi`, `.dmg`) and a portable Linux tarball. A `workflow_dispatch` run is a dry run — it builds and uploads artifacts but publishes no Release. The web and GitHub Pages jobs are gated off (`if: false`) pending a larger runner; the web preview is deployed manually meanwhile.
+
+### App configuration on CI
+
+`local.properties` is git-ignored, so it does not exist on a runner. Release builds
+read the same keys from environment variables instead, which `release.yml` maps from
+**repository variables** in a workflow-level `env:` block. Repository variables are not
+environment variables on their own — they live only in the `vars` context and must be
+mapped explicitly, or the build silently falls back to the placeholder defaults.
+
+Set these under **Settings → Secrets and variables → Actions → Variables**:
+
+`OAUTH_ISSUER`, `OAUTH_CLIENT_ID`, `OAUTH_SCOPES`, `OAUTH_REDIRECT_SCHEME`,
+`OAUTH_REDIRECT_HOST`, `OAUTH_DESKTOP_REDIRECT_PORT`, `OAUTH_WEB_REDIRECT_URL`,
+`FHIR_BASE_URL`.
+
+The `Preflight` job fails the run if any of them is unset, so a typo surfaces in the
+first minute rather than in a shipped artifact.
 
 Local installers:
 

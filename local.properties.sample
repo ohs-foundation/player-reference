@@ -42,8 +42,9 @@ OAUTH_SCOPES=openid profile email offline_access
 
 # Android and iOS: a custom-scheme deep link, {SCHEME}://{HOST}.
 # Register: dev.ohs.player.reference.app://auth
-# Changing these also means editing the LoginRedirectActivity intent-filter in
-# reference-app/src/androidMain/AndroidManifest.xml, which hardcodes the pair.
+# The Android intent-filter picks these up automatically: the build injects them
+# into AndroidManifest.xml as manifest placeholders, so the LoginRedirectActivity
+# deep link always matches whatever is configured here.
 OAUTH_REDIRECT_SCHEME=dev.ohs.player.reference.app
 OAUTH_REDIRECT_HOST=auth
 

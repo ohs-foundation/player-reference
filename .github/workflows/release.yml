@@ -26,6 +26,24 @@ concurrency:
 permissions:
   contents: read
 
+# reference-app/build.gradle.kts reads these via `authProp`, which prefers an env
+# var, then local.properties (git-ignored, so absent on a runner), then a hardcoded
+# default. Without this block every CI build silently shipped the defaults. Declared
+# at workflow level so all four build jobs inherit them; Actions has no YAML anchors.
+#
+# An unset variable expands to "" and `nonBlankEnv` treats blank as absent, so a
+# missing value falls back to the default rather than baking an empty string. That
+# also makes a typo'd variable name fail silently - hence the preflight check below.
+env:
+  OAUTH_ISSUER: ${{ vars.OAUTH_ISSUER }}
+  OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
+  OAUTH_SCOPES: ${{ vars.OAUTH_SCOPES }}
+  OAUTH_REDIRECT_SCHEME: ${{ vars.OAUTH_REDIRECT_SCHEME }}
+  OAUTH_REDIRECT_HOST: ${{ vars.OAUTH_REDIRECT_HOST }}
+  OAUTH_DESKTOP_REDIRECT_PORT: ${{ vars.OAUTH_DESKTOP_REDIRECT_PORT }}
+  OAUTH_WEB_REDIRECT_URL: ${{ vars.OAUTH_WEB_REDIRECT_URL }}
+  FHIR_BASE_URL: ${{ vars.FHIR_BASE_URL }}
+
 jobs:
   preflight:
     name: Preflight
@@ -84,6 +102,26 @@ jobs:
             echo "is_dry_run=$DRY_RUN"
             echo "signing_enabled=$SIGNING_ENABLED"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Verify required app config variables are set
+        run: |
+          missing=()
+          for v in \
+            OAUTH_ISSUER \
+            OAUTH_CLIENT_ID \
+            OAUTH_SCOPES \
+            OAUTH_REDIRECT_SCHEME \
+            OAUTH_REDIRECT_HOST \
+            OAUTH_DESKTOP_REDIRECT_PORT \
+            OAUTH_WEB_REDIRECT_URL \
+            FHIR_BASE_URL
+          do
+            [ -z "${!v}" ] && missing+=("$v")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository variables: ${missing[*]}. Set them under Settings > Secrets and variables > Actions > Variables, or the build will silently fall back to the placeholder defaults in reference-app/build.gradle.kts."
+            exit 1
+          fi
 
       - name: Verify required Android signing secrets are set
         if: steps.parse.outputs.signing_enabled == 'true'
