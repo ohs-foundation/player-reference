@@ -63,4 +63,5 @@ OAUTH_WEB_REDIRECT_URL=http://localhost:8080/callback
 # Base URL synced into the on-device FHIR engine. Requests carry the signed-in
 # session's bearer token (FhirBearerAuthenticator), so this server must accept
 # tokens from OAUTH_ISSUER — or, like the public HAPI sandbox, accept anything.
-FHIR_BASE_URL=https://hapi.fhir.org/baseR4
+# Sync paths resolve against this URL, so it ends in a slash. The build adds one if missing.
+FHIR_BASE_URL=https://hapi.fhir.org/baseR4/
