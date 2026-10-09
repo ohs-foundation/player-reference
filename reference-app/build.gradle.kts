@@ -234,7 +234,12 @@ val resolvedRedirectHost = authProp("OAUTH_REDIRECT_HOST", "auth")
 val resolvedWebRedirectUrl = authProp("OAUTH_WEB_REDIRECT_URL", "http://localhost:8080/callback")
 val resolvedDesktopPort = authProp("OAUTH_DESKTOP_REDIRECT_PORT", "8765")
 val resolvedScopes = authProp("OAUTH_SCOPES", "openid profile email offline_access")
-val resolvedFhirBaseUrl = authProp("FHIR_BASE_URL", "https://hapi.fhir.org/baseR4")
+// The FHIR Engine resolves sync paths against this URL, so it must end in a slash
+// (kotlin-fhir-engine#90).
+val resolvedFhirBaseUrl =
+  authProp("FHIR_BASE_URL", "https://hapi.fhir.org/baseR4/").let {
+    if (it.endsWith("/")) it else "$it/"
+  }
 
 val authConfigOutputDir = layout.buildDirectory.dir("generated/authconfig/commonMain/kotlin")
 

@@ -82,7 +82,7 @@ Use `gradlew.bat` on Windows, and run every command from the repository root. Co
 | `OAUTH_REDIRECT_HOST` | `auth` | Android/iOS deep-link host. |
 | `OAUTH_DESKTOP_REDIRECT_PORT` | `8765` | Port for the desktop loopback listener. |
 | `OAUTH_WEB_REDIRECT_URL` | `http://localhost:8080/callback` | Full URL the browser returns to on web. |
-| `FHIR_BASE_URL` | `https://hapi.fhir.org/baseR4` | FHIR R4 base URL for sync. Requests carry the session's bearer token. |
+| `FHIR_BASE_URL` | `https://hapi.fhir.org/baseR4/` | FHIR R4 base URL for sync. Requests carry the session's bearer token. |
 
 Each platform uses its idiomatic flow: Chrome Custom Tabs on Android, `ASWebAuthenticationSession` on iOS (no `Info.plist` entry needed), a loopback HTTP server on desktop, and a full-page redirect on web.
 
