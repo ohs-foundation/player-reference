@@ -24,10 +24,9 @@
 
         <!--
           Captures the OAuth redirect. The scheme/host are injected as manifest
-          placeholders by reference-app/build.gradle.kts, from the same
-          OAUTH_REDIRECT_SCHEME / OAUTH_REDIRECT_HOST values (env var or
-          local.properties) that generateAuthConfig bakes into GeneratedAuthConfig.
-          Do not hardcode them here - they would silently drift.
+          placeholders (oauthRedirectScheme / oauthRedirectHost) by the consuming
+          app module, which resolves them from OAUTH_REDIRECT_SCHEME /
+          OAUTH_REDIRECT_HOST (env var, then local.properties, then default).
         -->
         <activity
             android:name=".auth.LoginRedirectActivity"
