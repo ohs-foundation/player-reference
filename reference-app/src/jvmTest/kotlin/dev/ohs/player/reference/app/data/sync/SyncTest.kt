@@ -37,7 +37,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -138,23 +143,26 @@ class SyncTest {
   }
 
   @Test
-  fun periodicSync_calledTwice_doesNotStartASecondCompetingLoop() = runTest {
-    var startCount = 0
-    val firstAttemptStarted = CompletableDeferred<Unit>()
-    val factory: () -> TestFhirSyncTask = {
-      startCount++
-      firstAttemptStarted.complete(Unit)
-      TestFhirSyncTask()
+  fun simultaneousPeriodicStartsRunOneLoop() = runBlocking {
+    var cycles = 0
+    try {
+      List(20) {
+          async(Dispatchers.Default) {
+            Sync.periodicSync(
+              taskFactory = {
+                cycles++
+                TestFhirSyncTask(CompletableDeferred())
+              },
+              repeatInterval = 1.minutes,
+            )
+          }
+        }
+        .awaitAll()
+      delay(2_000)
+    } finally {
+      Sync.cancelPeriodicSync<TestFhirSyncTask>()
     }
 
-    Sync.periodicSync(taskFactory = factory, repeatInterval = 1.minutes)
-    firstAttemptStarted.await()
-    // The first cycle's loop is now sleeping the 1-minute interval, so it's still "active" —
-    // this second call must see that and no-op rather than starting a competing loop.
-    Sync.periodicSync(taskFactory = factory, repeatInterval = 1.minutes)
-
-    assertEquals(1, startCount)
-
-    Sync.cancelPeriodicSync<TestFhirSyncTask>()
+    assertEquals(1, cycles)
   }
 }

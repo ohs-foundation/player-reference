@@ -160,30 +160,25 @@ internal object Sync {
     repeatInterval: Duration,
     retryConfiguration: RetryConfiguration?,
   ) {
-    mutex
-      .withLock { activePeriodicJobs[uniqueWorkName] }
-      ?.takeIf { it.isActive }
-      ?.let {
-        return
-      }
-
-    val job =
-      scope.launch {
-        while (true) {
-          if (isNetworkConnected()) {
-            runAttemptsWithRetry(
-              taskFactory,
-              uniqueWorkName,
-              retryConfiguration,
-              syncTimeout = null,
-            ) {}
-          } else {
-            Logger.d { "Periodic sync cycle skipped for $uniqueWorkName — offline" }
+    mutex.withLock {
+      if (activePeriodicJobs[uniqueWorkName]?.isActive == true) return
+      activePeriodicJobs[uniqueWorkName] =
+        scope.launch {
+          while (true) {
+            if (isNetworkConnected()) {
+              runAttemptsWithRetry(
+                taskFactory,
+                uniqueWorkName,
+                retryConfiguration,
+                syncTimeout = null,
+              ) {}
+            } else {
+              Logger.d { "Periodic sync cycle skipped for $uniqueWorkName — offline" }
+            }
+            delay(repeatInterval)
           }
-          delay(repeatInterval)
         }
-      }
-    mutex.withLock { activePeriodicJobs[uniqueWorkName] = job }
+    }
   }
 
   suspend fun cancelSync(uniqueWorkName: String) {
