@@ -1,0 +1,105 @@
+[1mdiff --git a/.github/workflows/release.yml b/.github/workflows/release.yml[m
+[1mindex e6692d2..4ba22c2 100644[m
+[1m--- a/.github/workflows/release.yml[m
+[1m+++ b/.github/workflows/release.yml[m
+[36m@@ -138,7 +138,7 @@[m [mjobs:[m
+           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}[m
+           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}[m
+           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}[m
+[31m-        run: ./gradlew :reference-app:assembleRelease[m
+[32m+[m[32m        run: ./gradlew :androidApp:assembleRelease[m
+ [m
+       - name: Stage outputs[m
+         shell: bash[m
+[36m@@ -154,7 +154,7 @@[m [mjobs:[m
+ [m
+           # Fail loud if AGP ever produces 0 or >1 outputs (e.g. someone enables[m
+           # ABI/density splits) — the single-name cp below would silently corrupt.[m
+[31m-          apks=(reference-app/build/outputs/apk/release/*.apk)[m
+[32m+[m[32m          apks=(androidApp/build/outputs/apk/release/*.apk)[m
+           if [ ${#apks[@]} -ne 1 ]; then[m
+             echo "::error::Expected exactly one APK, got ${#apks[@]}: ${apks[*]}"[m
+             echo "::error::If splits/flavors were enabled, update this step to rename each variant."[m
+[36m@@ -180,18 +180,18 @@[m [mjobs:[m
+         include:[m
+           - os: ubuntu-latest[m
+             label: Linux deb[m
+[31m-            task: ':reference-app:packageDeb'[m
+[31m-            glob: 'reference-app/build/compose/binaries/main/deb/*.deb'[m
+[32m+[m[32m            task: ':desktopApp:packageDeb'[m
+[32m+[m[32m            glob: 'desktopApp/build/compose/binaries/main/deb/*.deb'[m
+             artifact: linux-deb[m
+           - os: ubuntu-latest[m
+             label: Linux rpm[m
+[31m-            task: ':reference-app:packageRpm'[m
+[31m-            glob: 'reference-app/build/compose/binaries/main/rpm/*.rpm'[m
+[32m+[m[32m            task: ':desktopApp:packageRpm'[m
+[32m+[m[32m            glob: 'desktopApp/build/compose/binaries/main/rpm/*.rpm'[m
+             artifact: linux-rpm[m
+           - os: windows-latest[m
+             label: Windows msi[m
+[31m-            task: ':reference-app:packageMsi'[m
+[31m-            glob: 'reference-app/build/compose/binaries/main/msi/*.msi'[m
+[32m+[m[32m            task: ':desktopApp:packageMsi'[m
+[32m+[m[32m            glob: 'desktopApp/build/compose/binaries/main/msi/*.msi'[m
+             artifact: windows-msi[m
+           # Pin to the latest stable Apple Silicon image: macos-latest currently[m
+           # resolves to macOS 26, where jpackage fails during createDistributable.[m
+[36m@@ -199,8 +199,8 @@[m [mjobs:[m
+           # a future universal build.[m
+           - os: macos-15[m
+             label: macOS dmg[m
+[31m-            task: ':reference-app:packageDmg'[m
+[31m-            glob: 'reference-app/build/compose/binaries/main/dmg/*.dmg'[m
+[32m+[m[32m            task: ':desktopApp:packageDmg'[m
+[32m+[m[32m            glob: 'desktopApp/build/compose/binaries/main/dmg/*.dmg'[m
+             artifact: macos-dmg[m
+     runs-on: ${{ matrix.os }}[m
+     permissions:[m
+[36m@@ -272,13 +272,13 @@[m [mjobs:[m
+       - name: Create distributable app image[m
+         env:[m
+           VERSION_NAME: ${{ needs.preflight.outputs.version_name }}[m
+[31m-        run: ./gradlew :reference-app:createDistributable[m
+[32m+[m[32m        run: ./gradlew :desktopApp:createDistributable[m
+ [m
+       - name: Tar up the distributable[m
+         shell: bash[m
+         run: |[m
+           shopt -s nullglob[m
+[31m-          APP_BASE=reference-app/build/compose/binaries/main/app[m
+[32m+[m[32m          APP_BASE=desktopApp/build/compose/binaries/main/app[m
+           app_dirs=("$APP_BASE"/*)[m
+           if [ ${#app_dirs[@]} -ne 1 ]; then[m
+             echo "::error::Expected exactly one app directory in $APP_BASE, got ${#app_dirs[@]}: ${app_dirs[*]}"[m
+[36m@@ -324,12 +324,12 @@[m [mjobs:[m
+       - name: Build web distribution[m
+         env:[m
+           VERSION_NAME: ${{ needs.preflight.outputs.version_name }}[m
+[31m-        run: ./gradlew :reference-app:wasmJsBrowserDistribution[m
+[32m+[m[32m        run: ./gradlew :webApp:wasmJsBrowserDistribution[m
+ [m
+       - name: Zip distribution for the GitHub Release[m
+         run: |[m
+           mkdir -p out[m
+[31m-          DIST=reference-app/build/dist/wasmJs/productionExecutable[m
+[32m+[m[32m          DIST=webApp/build/dist/wasmJs/productionExecutable[m
+           test -d "$DIST" || { echo "::error::Web dist directory missing: $DIST"; exit 1; }[m
+           (cd "$DIST" && zip -r "$GITHUB_WORKSPACE/out/ohs-player-web-${{ needs.preflight.outputs.version_name }}.zip" .)[m
+ [m
+[36m@@ -344,7 +344,7 @@[m [mjobs:[m
+         if: needs.preflight.outputs.is_dry_run == 'false' && needs.preflight.outputs.is_prerelease == 'false'[m
+         uses: actions/upload-pages-artifact@v3[m
+         with:[m
+[31m-          path: reference-app/build/dist/wasmJs/productionExecutable[m
+[32m+[m[32m          path: webApp/build/dist/wasmJs/productionExecutable[m
+ [m
+   # Disabled alongside build-web. See the comment above build-web for the[m
+   # rationale and the steps to re-enable.[m
+[36m@@ -405,4 +405,4 @@[m [mjobs:[m
+           prerelease: ${{ needs.preflight.outputs.is_prerelease == 'true' }}[m
+           generate_release_notes: true[m
+           fail_on_unmatched_files: true[m
+[31m-          files: release/*[m
+[32m+[m[32m          files: release/*[m
+\ No newline at end of file[m
